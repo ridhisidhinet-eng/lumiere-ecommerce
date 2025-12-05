@@ -1,26 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, ShoppingCart, Gem, Plus, Minus, X } from 'lucide-react';
 
 const App = () => {
+  // API and Loading States
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // Existing States
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
-  const products = [
-    // Rings
-    { id: 1, category: 'Rings', name: 'Diamond Solitaire Ring', price: 45000, story: 'Timeless elegance with a brilliant-cut diamond set in 18K gold' },
-    { id: 2, category: 'Rings', name: 'Emerald Cluster Ring', price: 38000, story: 'Vibrant emeralds surrounded by sparkling diamonds' },
-    { id: 3, category: 'Rings', name: 'Ruby Eternity Band', price: 52000, story: 'Continuous row of precious rubies symbolizing eternal love' },
-    // Necklaces
-    { id: 4, category: 'Necklaces', name: 'Pearl Strand Necklace', price: 28000, story: 'Lustrous freshwater pearls in a classic design' },
-    { id: 5, category: 'Necklaces', name: 'Sapphire Pendant', price: 42000, story: 'Deep blue sapphire centerpiece on delicate gold chain' },
-    { id: 6, category: 'Necklaces', name: 'Diamond Rivière', price: 95000, story: 'Graduated diamond necklace showcasing exceptional brilliance' },
-    // Earrings
-    { id: 7, category: 'Earrings', name: 'Diamond Studs', price: 35000, story: 'Classic round brilliant diamonds in platinum settings' },
-    { id: 8, category: 'Earrings', name: 'Sapphire Drop Earrings', price: 48000, story: 'Elegant drops featuring Ceylon sapphires and diamonds' },
-    { id: 9, category: 'Earrings', name: 'Pearl Hoops', price: 22000, story: 'Modern hoops adorned with cultured pearls' }
-  ];
+  const [selectedCategory, setSelectedCategory] = useState('All');
 
   const [checkoutForm, setCheckoutForm] = useState({
     name: '',
@@ -30,6 +22,37 @@ const App = () => {
     address2: '',
     pincode: ''
   });
+
+  // Fetch products from Azure API
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await fetch('https://lumiereapistore-fnhabjd7haf9hzhe.southeastasia-01.azurewebsites.net/api/products');
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch products');
+        }
+        
+        const data = await response.json();
+        
+        if (data.success && Array.isArray(data.data)) {
+          setProducts(data.data);
+        } else {
+          throw new Error('Invalid data format received');
+        }
+      } catch (err) {
+        console.error('Error fetching products:', err);
+        setError('Unable to load products. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+  }, []);
 
   const metroPincodes = ['400', '110', '560', '600', '700'];
   
@@ -75,7 +98,6 @@ const App = () => {
   );
 
   const categories = ['All', ...new Set(products.map(p => p.category))];
-  const [selectedCategory, setSelectedCategory] = useState('All');
 
   const displayProducts = selectedCategory === 'All' 
     ? filteredProducts 
@@ -173,25 +195,27 @@ const App = () => {
       </header>
 
       {/* Category Filter */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex space-x-4 overflow-x-auto">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-full whitespace-nowrap transition ${
-                  selectedCategory === cat
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+      {!loading && !error && (
+        <div className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="flex space-x-4 overflow-x-auto">
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-4 py-2 rounded-full whitespace-nowrap transition ${
+                    selectedCategory === cat
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Cart Sidebar */}
       {showCart && (
@@ -383,47 +407,79 @@ const App = () => {
         </div>
       )}
 
-      {/* Products Grid */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <h2 className="text-3xl font-bold text-gray-800 mb-8">
-          {selectedCategory === 'All' ? 'All Jewelry' : selectedCategory}
-        </h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {displayProducts.map(product => (
-            <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition">
-              <div className="h-48 bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
-                <Gem className="w-20 h-20 text-purple-600 opacity-50" />
-              </div>
-              <div className="p-6">
-                <p className="text-xs text-gray-500 mb-1">Product Name</p>
-                <h3 className="text-xl font-bold text-gray-800 mb-2">{product.name}</h3>
-                
-                <p className="text-xs text-gray-500 mb-1">₹ Price</p>
-                <p className="text-2xl font-bold text-purple-600 mb-4">
-                  ₹{product.price.toLocaleString('en-IN')}
-                </p>
-                
-                <p className="text-xs text-gray-500 mb-1">Product Story</p>
-                <p className="text-gray-600 text-sm mb-4">{product.story}</p>
-                
-                <button
-                  onClick={() => addToCart(product)}
-                  className="w-full bg-purple-600 text-white py-2 rounded-lg font-semibold hover:bg-purple-700 transition"
-                >
-                  Add to Cart
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {displayProducts.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500 text-lg">No products found matching your search.</p>
+      {/* Loading State */}
+      {loading && (
+        <main className="max-w-7xl mx-auto px-4 py-20">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-purple-500 border-t-transparent mb-4"></div>
+            <p className="text-gray-600 text-lg font-medium">Loading beautiful jewelry...</p>
+            <p className="text-gray-500 text-sm mt-2">Connecting to Azure database</p>
           </div>
-        )}
-      </main>
+        </main>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <main className="max-w-7xl mx-auto px-4 py-20">
+          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-8 max-w-md mx-auto text-center">
+            <div className="text-red-500 mb-4">
+              <X className="w-16 h-16 mx-auto" />
+            </div>
+            <p className="text-red-700 font-semibold text-lg mb-2">Unable to Load Products</p>
+            <p className="text-red-600 mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition font-semibold"
+            >
+              Try Again
+            </button>
+          </div>
+        </main>
+      )}
+
+      {/* Products Grid */}
+      {!loading && !error && (
+        <main className="max-w-7xl mx-auto px-4 py-8">
+          <h2 className="text-3xl font-bold text-gray-800 mb-8">
+            {selectedCategory === 'All' ? 'All Jewelry' : selectedCategory}
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {displayProducts.map(product => (
+              <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition">
+                <div className="h-48 bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
+                  <Gem className="w-20 h-20 text-purple-600 opacity-50" />
+                </div>
+                <div className="p-6">
+                  <p className="text-xs text-gray-500 mb-1">Product Name</p>
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">{product.name}</h3>
+                  
+                  <p className="text-xs text-gray-500 mb-1">₹ Price</p>
+                  <p className="text-2xl font-bold text-purple-600 mb-4">
+                    ₹{product.price.toLocaleString('en-IN')}
+                  </p>
+                  
+                  <p className="text-xs text-gray-500 mb-1">Product Story</p>
+                  <p className="text-gray-600 text-sm mb-4">{product.story}</p>
+                  
+                  <button
+                    onClick={() => addToCart(product)}
+                    className="w-full bg-purple-600 text-white py-2 rounded-lg font-semibold hover:bg-purple-700 transition"
+                  >
+                    Add to Cart
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {displayProducts.length === 0 && !loading && !error && (
+            <div className="text-center py-12">
+              <p className="text-gray-500 text-lg">No products found matching your search.</p>
+            </div>
+          )}
+        </main>
+      )}
 
       {/* Footer */}
       <footer className="bg-gray-800 text-white py-8 mt-12">
