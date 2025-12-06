@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ShoppingCart, Gem, Plus, Minus, X } from 'lucide-react';
+import { Search, ShoppingCart, Gem, Plus, Minus, X, AlertCircle } from 'lucide-react';
 
 const App = () => {
   // API and Loading States
@@ -62,7 +62,29 @@ const App = () => {
     return metroPincodes.includes(prefix) ? 200 : 500;
   };
 
+  // Get available stock for a product (considering cart)
+  const getAvailableStock = (productId) => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return 0;
+    
+    const cartItem = cart.find(item => item.id === productId);
+    const inCart = cartItem ? cartItem.quantity : 0;
+    
+    return product.stock_quantity - inCart;
+  };
+
+  // Check if product can be added to cart
+  const canAddToCart = (productId) => {
+    return getAvailableStock(productId) > 0;
+  };
+
   const addToCart = (product) => {
+    // Check stock availability
+    if (!canAddToCart(product.id)) {
+      alert(`Sorry, ${product.name} is out of stock!`);
+      return;
+    }
+
     const existing = cart.find(item => item.id === product.id);
     if (existing) {
       setCart(cart.map(item => 
@@ -74,10 +96,18 @@ const App = () => {
   };
 
   const updateQuantity = (id, change) => {
+    const cartItem = cart.find(item => item.id === id);
+    const newQuantity = cartItem.quantity + change;
+    
+    // Check if trying to increase beyond stock
+    if (change > 0 && !canAddToCart(id)) {
+      alert('Cannot add more items. Stock limit reached!');
+      return;
+    }
+
     setCart(cart.map(item => {
       if (item.id === id) {
-        const newQty = item.quantity + change;
-        return newQty > 0 ? { ...item, quantity: newQty } : item;
+        return newQuantity > 0 ? { ...item, quantity: newQuantity } : item;
       }
       return item;
     }).filter(item => item.quantity > 0));
@@ -240,37 +270,51 @@ const App = () => {
               ) : (
                 <>
                   <div className="space-y-4 mb-6">
-                    {cart.map(item => (
-                      <div key={item.id} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="text-xs text-gray-500 mb-1">Product Name</p>
-                          <h3 className="font-semibold text-gray-800">{item.name}</h3>
-                          <p className="text-xs text-gray-500 mt-1">₹ Price</p>
-                          <p className="text-purple-600 font-bold">₹{item.price.toLocaleString('en-IN')}</p>
-                        </div>
-                        <div className="flex items-center space-x-2">
+                    {cart.map(item => {
+                      const availableStock = getAvailableStock(item.id);
+                      return (
+                        <div key={item.id} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                          <div className="flex-1">
+                            <p className="text-xs text-gray-500 mb-1">Product Name</p>
+                            <h3 className="font-semibold text-gray-800">{item.name}</h3>
+                            <p className="text-xs text-gray-500 mt-1">₹ Price</p>
+                            <p className="text-purple-600 font-bold">₹{item.price.toLocaleString('en-IN')}</p>
+                            {availableStock === 0 && (
+                              <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" />
+                                Max quantity reached
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => updateQuantity(item.id, -1)}
+                              className="p-1 bg-gray-200 rounded hover:bg-gray-300"
+                            >
+                              <Minus className="w-4 h-4" />
+                            </button>
+                            <span className="w-8 text-center font-semibold">{item.quantity}</span>
+                            <button
+                              onClick={() => updateQuantity(item.id, 1)}
+                              disabled={availableStock === 0}
+                              className={`p-1 rounded ${
+                                availableStock === 0
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  : 'bg-gray-200 hover:bg-gray-300'
+                              }`}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
                           <button
-                            onClick={() => updateQuantity(item.id, -1)}
-                            className="p-1 bg-gray-200 rounded hover:bg-gray-300"
+                            onClick={() => removeFromCart(item.id)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded"
                           >
-                            <Minus className="w-4 h-4" />
-                          </button>
-                          <span className="w-8 text-center font-semibold">{item.quantity}</span>
-                          <button
-                            onClick={() => updateQuantity(item.id, 1)}
-                            className="p-1 bg-gray-200 rounded hover:bg-gray-300"
-                          >
-                            <Plus className="w-4 h-4" />
+                            <X className="w-5 h-5" />
                           </button>
                         </div>
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="border-t pt-4 space-y-2">
@@ -445,32 +489,71 @@ const App = () => {
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {displayProducts.map(product => (
-              <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition">
-                <div className="h-48 bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
-                  <Gem className="w-20 h-20 text-purple-600 opacity-50" />
+            {displayProducts.map(product => {
+              const isOutOfStock = product.stock_quantity === 0;
+              const cartItem = cart.find(item => item.id === product.id);
+              const inCart = cartItem ? cartItem.quantity : 0;
+              const availableStock = product.stock_quantity - inCart;
+              
+              return (
+                <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition">
+                  <div className="h-48 bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center relative">
+                    <Gem className="w-20 h-20 text-purple-600 opacity-50" />
+                    {isOutOfStock && (
+                      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                        <span className="text-white font-bold text-xl">OUT OF STOCK</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-6">
+                    <p className="text-xs text-gray-500 mb-1">Product Name</p>
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">{product.name}</h3>
+                    
+                    <p className="text-xs text-gray-500 mb-1">₹ Price</p>
+                    <p className="text-2xl font-bold text-purple-600 mb-4">
+                      ₹{product.price.toLocaleString('en-IN')}
+                    </p>
+                    
+                    <p className="text-xs text-gray-500 mb-1">Product Story</p>
+                    <p className="text-gray-600 text-sm mb-4">{product.story}</p>
+                    
+                    {/* Stock Information */}
+                    <div className="mb-4">
+                      <p className="text-xs text-gray-500 mb-1">Stock</p>
+                      <div className="flex items-center gap-2">
+                        {isOutOfStock ? (
+                          <span className="text-red-600 text-sm font-semibold">Out of Stock</span>
+                        ) : availableStock <= 3 ? (
+                          <span className="text-orange-600 text-sm font-semibold flex items-center gap-1">
+                            <AlertCircle className="w-4 h-4" />
+                            Only {availableStock} left!
+                          </span>
+                        ) : (
+                          <span className="text-green-600 text-sm font-semibold">In Stock ({product.stock_quantity} available)</span>
+                        )}
+                      </div>
+                      {inCart > 0 && (
+                        <p className="text-xs text-purple-600 mt-1">
+                          {inCart} in your cart
+                        </p>
+                      )}
+                    </div>
+                    
+                    <button
+                      onClick={() => addToCart(product)}
+                      disabled={isOutOfStock || availableStock === 0}
+                      className={`w-full py-2 rounded-lg font-semibold transition ${
+                        isOutOfStock || availableStock === 0
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-purple-600 text-white hover:bg-purple-700'
+                      }`}
+                    >
+                      {isOutOfStock || availableStock === 0 ? 'Out of Stock' : 'Add to Cart'}
+                    </button>
+                  </div>
                 </div>
-                <div className="p-6">
-                  <p className="text-xs text-gray-500 mb-1">Product Name</p>
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">{product.name}</h3>
-                  
-                  <p className="text-xs text-gray-500 mb-1">₹ Price</p>
-                  <p className="text-2xl font-bold text-purple-600 mb-4">
-                    ₹{product.price.toLocaleString('en-IN')}
-                  </p>
-                  
-                  <p className="text-xs text-gray-500 mb-1">Product Story</p>
-                  <p className="text-gray-600 text-sm mb-4">{product.story}</p>
-                  
-                  <button
-                    onClick={() => addToCart(product)}
-                    className="w-full bg-purple-600 text-white py-2 rounded-lg font-semibold hover:bg-purple-700 transition"
-                  >
-                    Add to Cart
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {displayProducts.length === 0 && !loading && !error && (
