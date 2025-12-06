@@ -6,6 +6,7 @@ const App = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [orderProcessing, setOrderProcessing] = useState(false);
   
   // Existing States
   const [cart, setCart] = useState([]);
@@ -25,34 +26,34 @@ const App = () => {
 
   // Fetch products from Azure API
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const response = await fetch('https://lumiereapistore-fnhabjd7haf9hzhe.southeastasia-01.azurewebsites.net/api/products');
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch products');
-        }
-        
-        const data = await response.json();
-        
-        if (data.success && Array.isArray(data.data)) {
-          setProducts(data.data);
-        } else {
-          throw new Error('Invalid data format received');
-        }
-      } catch (err) {
-        console.error('Error fetching products:', err);
-        setError('Unable to load products. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchProducts();
   }, []);
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch('https://lumiereapistore-fnhabjd7haf9hzhe.southeastasia-01.azurewebsites.net/api/products');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch products');
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && Array.isArray(data.data)) {
+        setProducts(data.data);
+      } else {
+        throw new Error('Invalid data format received');
+      }
+    } catch (err) {
+      console.error('Error fetching products:', err);
+      setError('Unable to load products. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const metroPincodes = ['400', '110', '560', '600', '700'];
   
@@ -133,7 +134,8 @@ const App = () => {
     ? filteredProducts 
     : filteredProducts.filter(p => p.category === selectedCategory);
 
-  const handleCheckout = () => {
+  // NEW: Handle checkout with API call
+  const handleCheckout = async () => {
     if (cart.length === 0) {
       alert('Your cart is empty!');
       return;
@@ -154,18 +156,69 @@ const App = () => {
       alert('Pin code must be 6 digits!');
       return;
     }
-    
-    alert(`Order placed successfully!\n\nTotal: ₹${grandTotal.toLocaleString('en-IN')}\n\nThank you for shopping at LUMIÈRE!`);
-    setCart([]);
-    setShowCheckout(false);
-    setCheckoutForm({
-      name: '',
-      email: '',
-      mobile: '',
-      address1: '',
-      address2: '',
-      pincode: ''
-    });
+
+    try {
+      setOrderProcessing(true);
+
+      // Prepare order data
+      const orderData = {
+        customer: {
+          name: checkoutForm.name,
+          email: checkoutForm.email,
+          mobile: checkoutForm.mobile,
+          address1: checkoutForm.address1,
+          address2: checkoutForm.address2,
+          pincode: checkoutForm.pincode
+        },
+        items: cart.map(item => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          price: item.price,
+          quantity: item.quantity
+        })),
+        subtotal: cartTotal,
+        shipping_cost: shippingCost,
+        total: grandTotal
+      };
+
+      // Call Orders API
+      const response = await fetch('https://lumiereapistore-fnhabjd7haf9hzhe.southeastasia-01.azurewebsites.net/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(orderData)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`🎉 Order placed successfully!\n\nOrder ID: ${result.order.id}\nTotal: ₹${grandTotal.toLocaleString('en-IN')}\n\nThank you for shopping at LUMIÈRE!\n\nYour order will be processed shortly.`);
+        
+        // Clear cart and form
+        setCart([]);
+        setShowCheckout(false);
+        setCheckoutForm({
+          name: '',
+          email: '',
+          mobile: '',
+          address1: '',
+          address2: '',
+          pincode: ''
+        });
+
+        // Refresh products to get updated stock
+        fetchProducts();
+      } else {
+        alert(`❌ Order failed: ${result.error}\n\nPlease try again or contact support.`);
+      }
+    } catch (error) {
+      console.error('Order error:', error);
+      alert('❌ Failed to place order. Please check your connection and try again.');
+    } finally {
+      setOrderProcessing(false);
+    }
   };
 
   return (
@@ -341,7 +394,7 @@ const App = () => {
 
       {/* Checkout Modal */}
       {showCheckout && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowCheckout(false)}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => !orderProcessing && setShowCheckout(false)}>
           <div 
             className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
@@ -349,7 +402,11 @@ const App = () => {
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">Checkout</h2>
-                <button onClick={() => setShowCheckout(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                <button 
+                  onClick={() => setShowCheckout(false)} 
+                  disabled={orderProcessing}
+                  className="p-2 hover:bg-gray-100 rounded-full disabled:opacity-50"
+                >
                   <X className="w-6 h-6" />
                 </button>
               </div>
@@ -361,7 +418,8 @@ const App = () => {
                     type="text"
                     value={checkoutForm.name}
                     onChange={(e) => setCheckoutForm({...checkoutForm, name: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={orderProcessing}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                   />
                 </div>
 
@@ -371,7 +429,8 @@ const App = () => {
                     type="email"
                     value={checkoutForm.email}
                     onChange={(e) => setCheckoutForm({...checkoutForm, email: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={orderProcessing}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                   />
                 </div>
 
@@ -382,7 +441,8 @@ const App = () => {
                     value={checkoutForm.mobile}
                     onChange={(e) => setCheckoutForm({...checkoutForm, mobile: e.target.value.replace(/\D/g, '').slice(0, 10)})}
                     placeholder="10 digits"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={orderProcessing}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                   />
                 </div>
 
@@ -392,7 +452,8 @@ const App = () => {
                     type="text"
                     value={checkoutForm.address1}
                     onChange={(e) => setCheckoutForm({...checkoutForm, address1: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={orderProcessing}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                   />
                 </div>
 
@@ -402,7 +463,8 @@ const App = () => {
                     type="text"
                     value={checkoutForm.address2}
                     onChange={(e) => setCheckoutForm({...checkoutForm, address2: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={orderProcessing}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                   />
                 </div>
 
@@ -413,7 +475,8 @@ const App = () => {
                     value={checkoutForm.pincode}
                     onChange={(e) => setCheckoutForm({...checkoutForm, pincode: e.target.value.replace(/\D/g, '').slice(0, 6)})}
                     placeholder="6 digits"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={orderProcessing}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                   />
                 </div>
 
@@ -441,9 +504,17 @@ const App = () => {
 
                 <button
                   onClick={handleCheckout}
-                  className="w-full bg-purple-600 text-white py-3 rounded-lg font-semibold hover:bg-purple-700 transition"
+                  disabled={orderProcessing}
+                  className="w-full bg-purple-600 text-white py-3 rounded-lg font-semibold hover:bg-purple-700 transition disabled:bg-purple-300 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  Place Order
+                  {orderProcessing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                      Processing Order...
+                    </>
+                  ) : (
+                    'Place Order'
+                  )}
                 </button>
               </div>
             </div>
